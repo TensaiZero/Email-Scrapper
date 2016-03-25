@@ -1,0 +1,182 @@
+Private WithEvents BrItems As Outlook.Items
+Private WithEvents DrItems As Outlook.Items
+Private source As String
+Private temp As String
+Private topic As String
+private const master_sheet as string = "Master Buyer"
+private const broker_sheet as string = "Listing 1"
+private const direct_sheet as string = "Listing 1"
+private const ss_name as string = ""
+private const reauth as string = ""
+Private Sub Application_Startup()
+  Dim olApp As Outlook.Application
+  Set olApp = Outlook.Application
+  Set BrItems = GetNS(olApp).GetDefaultFolder(olFolderInbox).Folders("Exclusives").Folders("Broker").Items
+  Set DrItems = GetNS(olApp).GetDefaultFolder(olFolderInbox).Folders("Exclusives").Folders("Directs").Items
+  'MsgBox "test"
+End Sub
+Private Sub BrItems_ItemAdd(ByVal Item As Object)
+On Error GoTo ErrorHandler
+    Call savetogoogle(Item, "Broker")
+ProgramExit:
+  Exit Sub
+ErrorHandler:
+  MsgBox Err.Number & " - " & Err.Description
+  Resume ProgramExit
+End Sub
+Private Sub DrItems_ItemAdd(ByVal Item As Object)
+On Error GoTo ErrorHandler
+    Call savetogoogle(Item, "Directs")
+ProgramExit:
+  Exit Sub
+ErrorHandler:
+  MsgBox Err.Number & " - " & Err.Description
+  Resume ProgramExit
+End Sub
+Sub savetogoogle(ByVal itm As Object, ByVal fldr As String)
+    Dim auth As Authreq
+    Dim sht As GSheets
+    Dim subrc As Integer
+    Dim sname As String
+    Dim bname As String
+    Dim fn As String
+    Dim ln As String
+    Dim em As String
+    Dim sc As String
+    Dim ls As String
+    Dim dt As String
+    If topic <> itm.ConversationTopic Then
+        topic = itm.ConversationTopic
+    Else
+        If itm.Categories <> "" Then
+            itm.Categories = Item.Categories & ",done"
+        Else
+            itm.Categories = "done"
+        End If
+        itm.Save
+        Exit Sub
+    End If
+    Set auth = New Authreq
+    if reauth = "X" then goto getnew
+    If auth.stat = "No Access Token yet" Then
+getnew:
+        URL = auth.getAuthURL
+        Dim clipboard As MSForms.DataObject
+        Set clipboard = New MSForms.DataObject
+        clipboard.SetText URL
+        clipboard.PutInClipboard
+        Code.Show
+        Set srvc = auth.useAccCode(Code.codeval.Value)
+    Else
+        subrc = auth.refreshToken
+        If subrc = 4 Then GoTo getnew
+        Set srvc = auth.useToken
+    End If
+    Set sht = New GSheets
+    sname = sht.getdefsht
+    if ss_name <> "" then sname = ss_name
+    If sname = "" Then
+        books = sht.getBooks(auth.srvc)
+        Do Until i = books
+            bname = sht.getWBnames(i)
+            addBk bname, i
+            i = i + 1
+        Loop
+        BookList.Show
+        sname = temp
+    End If
+    If sname <> "" Then
+    subrc = sht.setBook(auth.srvc, sname)
+    'Master Sheet
+    subrc = sht.getResult(master_sheet) 'Sheet Name in google Docs
+    subrc = sht.GetItems(auth.srvc) 'Item count in sheet
+    Dim splt() As String
+    If InStr(1, itm.SenderName, " ") Then
+        splt() = Split(itm.SenderName, " ")
+        Call sht.addEl("firstname", splt(0))
+        Call sht.addEl("lastname", splt(1))
+    Else
+        Call sht.addEl("firstname", itm.SenderName)
+        Call sht.addEl("lastname", "")
+    End If
+    
+    Call sht.addEl("email", itm.SenderEmailAddress)
+    Call sht.addEl("source", cat(itm))
+    Call sht.addEl("sub-category", fldr)
+    Call sht.addEl("listing", fldr)
+    Call sht.addEl("date", itm.ReceivedTime)
+    subrc = sht.addItems(auth.srvc)
+    'Listing Sheet
+	if fldr = "Broker" then  subrc = sht.getResult(broker_sheet) 'Sheet Name in google Docs
+	if fldr = "Directs" then subrc = sht.getResult(direct_sheet) 'Sheet Name in google Docs
+    subrc = sht.GetItems(auth.srvc) 'Item count in sheet
+    If InStr(1, itm.SenderName, " ") Then
+        splt() = Split(itm.SenderName, " ")
+        Call sht.addEl("firstname", splt(0))
+        Call sht.addEl("lastname", splt(1))
+    Else
+        Call sht.addEl("firstname", itm.SenderName)
+        Call sht.addEl("lastname", "")
+    End If
+    
+    Call sht.addEl("email", itm.SenderEmailAddress)
+    Call sht.addEl("source", cat(itm))
+    Call sht.addEl("sub-category", fldr)
+    'Call sht.addEl("listing", fldr)
+    Call sht.addEl("date", itm.ReceivedTime)
+    subrc = sht.addItems(auth.srvc)
+    If subrc = 0 Then
+        If itm.Categories <> "" Then
+            itm.Categories = Item.Categories & ",done"
+        Else
+            itm.Categories = "done"
+        End If
+        itm.Save
+    End If
+    Else
+        MsgBox "No workbook selected"
+    End If
+End Sub
+Sub addBk(ByVal nme As String, ByVal indx As Long)
+    BookList.BookList.AddItem nme, indx
+End Sub
+Sub ok()
+    temp = BookList.BookList.Value
+    BookList.Hide
+End Sub
+Sub ok2()
+    Code.Hide
+End Sub
+Sub test()
+    Dim auth As New Authreq
+    Dim sht As GSheets
+    Dim subrc As Integer
+    Dim sname As String
+    Dim bname As String
+    Dim fn As String
+    Dim ln As String
+    Dim em As String
+    Dim sc As String
+    Dim ls As String
+    Dim dt As String
+    
+End Sub
+
+
+Function cat(ByVal itm As Object) As String
+    If InStr(1, itm.Body, "craigslist.com", vbTextCompare) > 0 Then cat = "Craigslist": Exit Function
+    If InStr(1, itm.Body, "Listing ID", vbTextCompare) > 0 Then cat = "KW": Exit Function
+    If InStr(1, itm.Body, "nakedapartments.com", vbTextCompare) > 0 Then cat = "Naked Apartments": Exit Function
+    If InStr(1, itm.Body, "StreetEasy.com", vbTextCompare) > 0 Then cat = "StreetEasy": Exit Function
+    If InStr(1, itm.Body, "UpperEastSide-Rentals", vbTextCompare) > 0 Then cat = "UpperEastSide-Rentals": Exit Function
+    If InStr(1, itm.Body, "UpperEastSide-Apartments", vbTextCompare) > 0 Then cat = "UpperEastSide-Apartments": Exit Function
+    If InStr(1, itm.Categories, "listing", vbTextCompare) > 0 Then cat = "Listing": Exit Function
+    If InStr(1, itm.Categories, "mailer", vbTextCompare) > 0 Then cat = "mailer": Exit Function
+    If InStr(1, itm.Categories, "open house", vbTextCompare) > 0 Then cat = "open house": Exit Function
+    If InStr(1, itm.Categories, "referral", vbTextCompare) > 0 Then cat = "referral": Exit Function
+    If InStr(1, itm.Categories, "done", vbTextCompare) > 0 Then cat = "done": Exit Function
+End Function
+Function GetNS(ByRef app As Outlook.Application) As Outlook.NameSpace
+  Set GetNS = app.GetNamespace("MAPI")
+End Function
+
