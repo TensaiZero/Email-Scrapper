@@ -1,243 +1,46 @@
-Private WithEvents BrItems As Outlook.Items
-Private WithEvents DrItems As Outlook.Items
+Private WithEvents exclusive As Outlook.Folders
 Private source As String
 Private temp As String
 Private topic As String
-Private Const broker_master As String = "Master Broker"
-Private Const direct_master As String = "Master Buyer"
-Private Const broker_sheet As String = "Listing 1"
-Private Const direct_sheet As String = "Listing 1"
 Private Const ss_name As String = ""
 Private Const reauth As String = ""
+Private fldrs As New Collection
+Private fldr As cl_items
 Private Sub Application_Startup()
   Dim olApp As Outlook.Application
   Set olApp = Outlook.Application
-  Set BrItems = GetNS(olApp).GetDefaultFolder(olFolderInbox).Folders("Exclusives").Folders("Broker").Items
-  Set DrItems = GetNS(olApp).GetDefaultFolder(olFolderInbox).Folders("Exclusives").Folders("Directs").Items
-  'MsgBox "test"
-End Sub
-Private Sub BrItems_ItemAdd(ByVal Item As Object)
-On Error GoTo ErrorHandler
-    savetogoogle Item, "Broker", "Master Broker", "Listing 1"
-ProgramExit:
-  Exit Sub
-ErrorHandler:
-  MsgBox Err.Number & " - " & Err.Description
-  Resume ProgramExit
-End Sub
-Private Sub DrItems_ItemAdd(ByVal Item As Object)
-On Error GoTo ErrorHandler
-    savetogoogle Item, "Directs", "Master Buyer", "Listing 1"
-ProgramExit:
-  Exit Sub
-ErrorHandler:
-  MsgBox Err.Number & " - " & Err.Description
-  Resume ProgramExit
-End Sub
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-'Do Not Edit below this
-Private Sub savetogoogle(ByVal Itm As Object, ByVal fldr As String, ByVal mast As String, ByVal lst As String)
-    Dim auth As Authreq
-    Dim sht As GSheets
-    Dim subrc As Integer
-    Dim sname As String
-    Dim bname As String
-    Dim fn As String
-    Dim ln As String
-    Dim em As String
-    Dim sc As String
-    Dim ls As String
-    Dim dt As String
-    Dim ct As String
-    If topic <> Itm.ConversationTopic Then
-        topic = Itm.ConversationTopic
-    Else
-        If InStr(1, Itm.Categories, "done", vbTextCompare) > 0 Then Exit Sub
-        If ifExclude(Itm.SenderEmailAddress, Itm.SenderName) = "skip" Then Exit Sub
-        If Itm.Categories <> "" Then
-            Itm.Categories = Itm.Categories & ",done"
+  Set exclusive = GetNS(olApp).GetDefaultFolder(olFolderInbox).Folders("Exclusives").Folders
+  For Each item In exclusive
+        If item.Name = "Broker" Or item.Name = "Direct" Then
+            'Set fldr = New cl_items
+            'Set fldr.citm = item.Items
+            
+            'fldrs.Add fldr
         Else
-            Itm.Categories = "done"
+            For Each item2 In item.Folders
+                If item2.Name = "Broker" Or item2.Name = "Direct" Then
+                    Set fldr = New cl_items
+                    Set fldr.citm = item2.Items
+                    fldr.typ = item2.Name
+                    fldr.fnm = item.Name
+                    fldrs.Add fldr
+                End If
+            Next item2
         End If
-        Itm.Save
-        Exit Sub
-    End If
-    Set auth = New Authreq
-    If reauth = "X" Then GoTo getnew
-    If auth.stat = "No Access Token yet" Then
-getnew:
-        URL = auth.getAuthURL
-        Dim clipboard As MSForms.DataObject
-        Set clipboard = New MSForms.DataObject
-        clipboard.SetText URL
-        clipboard.PutInClipboard
-        Code.Show
-        Set srvc = auth.useAccCode(Code.codeval.Value)
-    Else
-        subrc = auth.refreshToken
-        If subrc = 4 Then GoTo getnew
-        Set srvc = auth.useToken
-    End If
-    Set sht = New GSheets
-    sname = sht.getdefsht
-    If ss_name <> "" Then sname = ss_name
-    If sname = "" Then
-        books = sht.getBooks(auth.srvc)
-        Do Until i = books
-            bname = sht.getWBnames(i)
-            addBk bname, i
-            i = i + 1
-        Loop
-        BookList.Show
-        sname = temp
-    End If
-    If sname <> "" Then
-    subrc = sht.setBook(auth.srvc, sname)
-    'Master Sheet
-    subrc = sht.getResult(mast) 'Sheet Name in google Docs
-    subrc = sht.GetItems(auth.srvc) 'Item count in sheet
-    GetName Itm, fn, ln, em
-    Call sht.addEl("firstname", fn)
-    Call sht.addEl("lastname", ln)
-    Call sht.addEl("email", em)
-    Call sht.addEl("source", cat(Itm))
-    Call sht.addEl("sub-category", fldr)
-    Call sht.addEl("listing", fldr)
-    Call sht.addEl("date", DateValue(Itm.ReceivedTime))
-    subrc = sht.addItems(auth.srvc)
-    'Listing Sheet
-    sht.getResult (lst)
-    subrc = sht.GetItems(auth.srvc) 'Item count in sheet
-    GetName Itm, fn, ln, em
-    Call sht.addEl("firstname", fn)
-    Call sht.addEl("lastname", ln)
-    Call sht.addEl("email", em)
-    Call sht.addEl("source", cat(Itm))
-    Call sht.addEl("sub-category", fldr)
-    'Call sht.addEl("listing", fldr)
-    Call sht.addEl("date", DateValue(Itm.ReceivedTime))
-    subrc = sht.addItems(auth.srvc)
-    If subrc = 0 Then
-        If Itm.Categories <> "" Then
-            Itm.Categories = Itm.Categories & ",done"
-        Else
-            Itm.Categories = "done"
-        End If
-        Itm.Save
-    End If
-    Else
-        MsgBox "No workbook selected"
-    End If
+  Next item
 End Sub
-Sub addBk(ByVal nme As String, ByVal indx As Long)
-    BookList.BookList.AddItem nme, indx
-End Sub
-Sub ok()
-    temp = BookList.BookList.Value
-    BookList.Hide
-End Sub
-Sub ok2()
-    Code.Hide
-End Sub
-Function cat(ByVal Itm As Object) As String
-    If InStr(1, Itm.Body, "craigslist.com", vbTextCompare) > 0 Then cat = "Craigslist": Exit Function
-    If InStr(1, Itm.Body, "Listing ID", vbTextCompare) > 0 Then cat = "KW": Exit Function
-    If InStr(1, Itm.Body, "nakedapartments.com", vbTextCompare) > 0 Then cat = "Naked Apartments": Exit Function
-    If InStr(1, Itm.Body, "StreetEasy.com", vbTextCompare) > 0 Then cat = "StreetEasy": Exit Function
-    If InStr(1, Itm.Body, "UpperEastSide-Rentals", vbTextCompare) > 0 Then cat = "UpperEastSide-Rentals": Exit Function
-    If InStr(1, Itm.Body, "UpperEastSide-Apartments", vbTextCompare) > 0 Then cat = "UpperEastSide-Apartments": Exit Function
-    If InStr(1, Itm.Body, "OLR.com", vbTextCompare) > 0 Then cat = "OLR": Exit Function
-    If InStr(1, Itm.Categories, "listing", vbTextCompare) > 0 Then cat = "Listing": Exit Function
-    If InStr(1, Itm.Categories, "mailer", vbTextCompare) > 0 Then cat = "mailer": Exit Function
-    If InStr(1, Itm.Categories, "open house", vbTextCompare) > 0 Then cat = "open house": Exit Function
-    If InStr(1, Itm.Categories, "referral", vbTextCompare) > 0 Then cat = "referral": Exit Function
-    'If InStr(1, Itm.Categories, "done", vbTextCompare) > 0 Then cat = "done": Exit Function
-End Function
 Function GetNS(ByRef app As Outlook.Application) As Outlook.NameSpace
   Set GetNS = app.GetNamespace("MAPI")
 End Function
-Private Sub GetName(ByVal Itm As Object, ByRef fn As String, ByRef ln As String, ByRef em As String)
-    Dim loc As Long
-    Dim name_temp As String
-    Dim splt() As String
-    Dim cnt As Long
-    Dim i As Long
-    If Itm.SenderName = "StreetEasy" Then
-        'Search in body
-        loc = InStr(1, Itm.Body, "From:", vbTextCompare)
-        If loc > 0 Then
-            name_temp = Mid(Itm.Body, loc + 5, 200)
-            name_temp = Trim(name_temp)
-            'Split text by newline
-            splt() = Split(name_temp, vbCrLf)
-            'Get the first item
-            On Error GoTo exitsub
-            name_temp = splt(0)
-            On Error GoTo 0
-        End If
-    Else
-        name_temp = Itm.SenderName
-        em = Itm.SenderEmailAddress
-    End If
-        'Check if there is ","
-        On Error Resume Next
-        'Check if there's a hyperlink
-        If InStr(1, name_temp, "HYPERLINK", vbTextCompare) > 0 Then
-            splt() = Split(name_temp, Chr(34))
-            cnt = UBound(splt(), 1)
-            name_temp = splt(cnt)
-            name_temp = Trim(name_temp)
-            em = splt(cnt - 1)
-            em = Right(em, Len(em) - 7)
-        End If
-        If InStr(1, name_temp, ",", vbTextCompare) > 0 Then
-            splt() = Split(name_temp, ", ")
-            ln = splt(0)
-            fn = splt(1)
-        Else
-            splt() = Split(name_temp, " ")
-            cnt = UBound(splt(), 1)
-            fn = splt(0)
-            i = 1
-            Do Until i > cnt
-                If ln = "" Then
-                    ln = splt(i)
-                Else
-                    ln = ln & " " & splt(i)
-                End If
-                i = i + 1
-            Loop
-        End If
-        On Error GoTo 0
-exitsub:
-Exit Sub
-End Sub
-Function ifExclude(ByVal sender As String, ByVal nme As String) As String
-    If sender = "dkarp@kwnyc.com" Or _
-       sender = "adagan@kwnyc.com" Or _
-       sender = "ltoperations@kwnyc.com" Or _
-       sender = "TPorell@kwnyc.com" Or _
-       sender = "Moshe@kwnyc.com" Then
-        ifExclude = "skip"
-    End If
-    If nme = "Daniel Karp" Or _
-        nme = "Ariel Dagan" Or _
-        nme = "Tim Porell" Or _
-        nme = "Moshe Kanarfogel" Or _
-        nme = "Local Team Operations" Then
-        ifExclude = "skip"
-    End If
-End Function
+
+
+
+
+
+
+
+
+
+
+
+
