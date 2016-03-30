@@ -1,0 +1,150 @@
+Imports Google.GData.Client
+Imports Google.GData.Spreadsheets
+Imports System.Collections
+Imports System.Collections.Specialized
+Public Class Authreq
+    Public stat As String
+    Private param As New OAuth2Parameters
+    Private id As String = "831035409731-jq0cfupgcl301i3flhtfubjt0o11d5d8.apps.googleusercontent.com"
+    Private secret As String = "8t-uZnY9a7Rz-o2Zp-pm_Gvk"
+    Private scope As String = "https://spreadsheets.google.com/feeds https://docs.google.com/feeds"
+    Property srvc As SpreadsheetsService
+    Sub New()
+        param.ClientId = id
+        param.ClientSecret = secret
+        param.Scope = scope
+        param.RedirectUri = "urn:ietf:wg:oauth:2.0:oob"
+        param.TokenUri = "https://accounts.google.com/o/oauth2/token"
+        param.AuthUri = "https://accounts.google.com/o/oauth2/auth"
+        If My.Settings.accesstoken <> "" Then
+            param.RefreshToken = My.Settings.refreshtoken
+            param.AccessToken = My.Settings.accesstoken
+            stat = "Access Token exist"
+        Else
+            stat = "No Access Token yet"
+        End If
+    End Sub
+    Sub cleardef() 'Clear default values
+        My.Settings.Reset()
+    End Sub
+    Function getAuthURL() As String
+        Return OAuthUtil.CreateOAuth2AuthorizationUrl(param)
+    End Function
+    Function refreshToken() As Integer
+        On Error GoTo Err
+        OAuthUtil.RefreshAccessToken(param)
+        On Error GoTo 0
+        Return 0
+        Exit Function
+Err:
+        Return 4
+    End Function
+    Function useAccCode(ByVal code As String) As SpreadsheetsService
+        Dim reqFac As GOAuth2RequestFactory
+        param.AccessCode = code
+        param.RefreshToken = ""
+        OAuthUtil.GetAccessToken(param)
+        My.Settings.accesstoken = param.AccessToken
+        My.Settings.refreshtoken = param.RefreshToken
+        My.Settings.Save()
+        reqFac = New GOAuth2RequestFactory("", "Sheets-edit", param)
+        srvc = New SpreadsheetsService("Sheets-edit")
+        srvc.RequestFactory = reqFac
+        Return srvc
+    End Function
+    Function useToken() As SpreadsheetsService
+        Dim reqFac As GOAuth2RequestFactory
+        'Dim srvc As SpreadsheetsService
+        reqFac = New GOAuth2RequestFactory("", "Sheets-edit", param)
+        srvc = New SpreadsheetsService("Sheets-edit")
+        srvc.RequestFactory = reqFac
+        Return srvc
+    End Function
+End Class
+Public Class GSheets
+    Public shts() As String
+    Private srvc As SpreadsheetsService
+    Private feed As SpreadsheetFeed
+    Private query As SpreadsheetQuery
+    Private entry As SpreadsheetEntry
+    Private dta As WorksheetEntry
+    Property lf As ListFeed
+    Property rw As ListEntry = New ListEntry()
+    Property bks As New StringCollection
+    Function getBooks(ByVal service As SpreadsheetsService) As Integer
+        srvc = service
+        query = New SpreadsheetQuery
+        feed = srvc.Query(query)
+        For Each entry In feed.Entries
+            bks.Add(entry.Title.Text)
+        Next entry
+        Return bks.Count
+    End Function
+    Function getWBnames(ByVal i As Integer) As String
+        Return bks.Item(i)
+    End Function
+    Function setBook(ByVal service As SpreadsheetsService, ByVal snme As String) As Integer
+        srvc = service
+        query = New SpreadsheetQuery
+        feed = srvc.Query(query)
+        For Each entry In feed.Entries
+            If entry.Title.Text = snme Then
+                My.Settings.defbook = snme
+                My.Settings.Save()
+                Return 0
+                Exit Function
+            End If
+        Next entry
+        Return 4
+    End Function
+    Function getResult(ByVal snme As String) As Integer
+        For Each dta In entry.Worksheets.Entries
+            If dta.Title.Text = snme Then
+                Return 0
+                Exit Function
+            End If
+        Next dta
+        Return 4
+    End Function
+    Function getItems(ByRef service As SpreadsheetsService) As Integer
+        Dim lserv As SpreadsheetsService = service
+        Dim lf_lnk As AtomLink = dta.Links.FindService(GDataSpreadsheetsNameTable.ListRel, "")
+        Dim lq As ListQuery = New ListQuery(lf_lnk.HRef.ToString)
+        lf = service.Query(lq)
+        Return lf.Entries.Count
+    End Function
+    Function addItems(ByRef service As SpreadsheetsService) As Integer
+        On Error GoTo Err
+        service.Insert(lf, rw)
+        On Error GoTo 0
+        Return 0
+        Exit Function
+Err:
+        Return 4
+    End Function
+    Function checkdup(ByVal em As String) As Boolean
+        Dim lc As ListEntry.Custom = New ListEntry.Custom
+        Dim lrw As ListEntry
+        Dim i As Integer
+        Dim tot As Integer
+        tot = lf.Entries.Count
+        Do Until i = tot
+            lrw = lf.Entries(i)
+            If lrw.Elements.Item(2).Value = em Then
+                Return True
+                Exit Function
+            End If
+            i = i + 1
+        Loop
+        Return False
+    End Function
+    Function getdefsht() As String
+        Return My.Settings.defbook
+    End Function
+    Sub addEl(ByVal lname As String, ByVal val As String)
+        Dim lc As ListEntry.Custom = New ListEntry.Custom
+        lc.LocalName = lname
+        lc.Value = val
+        rw.Elements.Add(lc)
+    End Sub
+End Class
