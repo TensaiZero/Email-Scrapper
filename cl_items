@@ -28,6 +28,7 @@ Private Sub savetogoogle(ByVal Itm As Object, ByVal fldr As String, ByVal mast A
     Dim ls As String
     Dim dt As String
     Dim ct As String
+    Dim dup As Boolean
     If ifExclude(Itm.SenderEmailAddress, Itm.SenderName) = "skip" Then Exit Sub
     If topic <> Itm.ConversationTopic Then
         topic = Itm.ConversationTopic
@@ -80,18 +81,23 @@ getnew:
     subrc = sht.getResult(mast) 'Sheet Name in google Docs
     subrc = sht.GetItems(auth.srvc) 'Item count in sheet
     GetName Itm, fn, ln, em
+    dup = sht.checkdup(em)
+    If dup = True Then
+        MsgBox "Duplicate Item"
+        Exit Sub
+    End If
     Call sht.addEl("firstname", fn)
     Call sht.addEl("lastname", ln)
     Call sht.addEl("email", em)
     Call sht.addEl("source", cat(Itm))
     Call sht.addEl("sub-category", fldr)
-    Call sht.addEl("listing", fldr)
+    Call sht.addEl("listing", fnm)
     Call sht.addEl("date", DateValue(Itm.ReceivedTime))
     subrc = sht.addItems(auth.srvc)
     'Listing Sheet
     subrc = sht.getResult(lst)
     subrc = sht.GetItems(auth.srvc) 'Item count in sheet
-    GetName Itm, fn, ln, em
+    'GetName Itm, fn, ln, em
     Call sht.addEl("firstname", fn)
     Call sht.addEl("lastname", ln)
     Call sht.addEl("email", em)
